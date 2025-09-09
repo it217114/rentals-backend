@@ -1,0 +1,25 @@
+﻿# ---- Java / Maven / Spring Boot ----
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!.mvn/wrapper/maven-wrapper.properties
+.mvn/wrapper/*/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# Logs
+*.log
+logs/
+**/hs_err_pid*.log
+**/replay_pid*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
