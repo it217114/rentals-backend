@@ -2,7 +2,7 @@ pipeline {
   agent any
 
   environment {
-    IMAGE     = "it217114/rentals-backend"
+    IMAGE = 'it217114/rentals-backend'   // ΠΡΕΠΕΙ να είναι πεζά
   }
 
   stages {
@@ -10,28 +10,37 @@ pipeline {
       steps { checkout scm }
     }
 
-    stage('Build JAR (Maven in Docker)') {
+    stage('Compute git short SHA') {
       steps {
         script {
-          // Χρησιμοποιεί Docker Pipeline plugin – κάνει σωστά mount το workspace
-          docker.image('maven:3.9.6-eclipse-temurin-21-alpine').inside('-v $HOME/.m2:/root/.m2') {
-            sh 'mvn -B -DskipTests package'
-          }
+          env.GIT_SHORT = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+          echo "GIT_SHORT=${env.GIT_SHORT}"
         }
+      }
+    }
+
+    stage('Build JAR (Maven in Docker)') {
+      steps {
+        sh '''
+          set -eux
+          docker run --rm \
+            -v "$PWD":/ws -w /ws \
+            -v "$HOME/.m2":/root/.m2 \
+            maven:3.9.6-eclipse-temurin-21-alpine \
+            sh -lc 'mvn -B -DskipTests package'
+        '''
       }
     }
 
     stage('Docker Build') {
       steps {
-        script {
-          // μικρό git short για tag
-          def GIT_SHORT = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
-          sh """
-            set -eux
-            docker build -t ${IMAGE}:latest -t ${IMAGE}:${GIT_SHORT} .
-          """
-          env.GIT_SHORT = GIT_SHORT
-        }
+        sh '''
+          set -eux
+          : "${IMAGE:?IMAGE env not set}"
+          : "${GIT_SHORT:?GIT_SHORT env not set}"
+          echo "Building IMAGE=${IMAGE}"
+          docker build -t "${IMAGE}:latest" -t "${IMAGE}:${GIT_SHORT}" .
+        '''
       }
     }
 
@@ -44,17 +53,16 @@ pipeline {
         )]) {
           sh '''
             set -eux
+            : "${IMAGE:?IMAGE env not set}"
+            : "${GIT_SHORT:?GIT_SHORT env not set}"
+            echo "Pushing IMAGE=${IMAGE}"
             echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-            docker push '"${IMAGE}:latest"'
-            docker push '"${IMAGE}:${GIT_SHORT}"'
+            docker push "${IMAGE}:latest"
+            docker push "${IMAGE}:${GIT_SHORT}"
             docker logout || true
           '''
         }
       }
     }
-  }
-
-  post {
-    success { echo "✅ Pushed ${IMAGE}:latest and :${env.GIT_SHORT}" }
   }
 }
