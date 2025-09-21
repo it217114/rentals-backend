@@ -10,8 +10,9 @@ pipeline {
       steps {
         checkout scm
         script {
-          GIT_SHORT = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
-          echo "GIT_SHORT = ${GIT_SHORT}"
+          // ΠΡΟΣΟΧΗ: σε env.*
+          env.GIT_SHORT = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+          echo "GIT_SHORT=${env.GIT_SHORT}"
         }
       }
     }
@@ -19,12 +20,9 @@ pipeline {
     stage('Build JAR (Maven inside Docker)') {
       steps {
         script {
-          // Αυτό ΧΡΗΣΙΜΟΠΟΙΕΙ το Docker Pipeline plugin.
-          // Το plugin μοιράζεται αυτόματα το workspace με το κοντέινερ.
           docker.image('maven:3.9.6-eclipse-temurin-21-alpine').inside {
             sh '''
               set -eux
-              ls -la
               mvn -B -DskipTests package
               ls -la target || true
             '''
