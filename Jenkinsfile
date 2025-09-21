@@ -2,7 +2,7 @@ pipeline {
   agent any
 
   environment {
-    IMAGE = "it217114/rentals-backend"
+    IMAGE     = "it217114/rentals-backend"
   }
 
   stages {
@@ -10,37 +10,28 @@ pipeline {
       steps { checkout scm }
     }
 
-    stage('Compute GIT_SHORT') {
+    stage('Build JAR (Maven in Docker)') {
       steps {
         script {
-          env.GIT_SHORT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+          // Χρησιμοποιεί Docker Pipeline plugin – κάνει σωστά mount το workspace
+          docker.image('maven:3.9.6-eclipse-temurin-21-alpine').inside('-v $HOME/.m2:/root/.m2') {
+            sh 'mvn -B -DskipTests package'
+          }
         }
-      }
-    }
-
-    stage('Build JAR (Maven inside Docker)') {
-      steps {
-        sh '''
-          set -eux
-          docker run --rm \
-            -v "$PWD":/ws \
-            -w /ws \
-            -v "$HOME/.m2":/ws/.m2 \
-            maven:3.9.6-eclipse-temurin-21-alpine \
-            sh -lc 'ls -la; mvn -B -Dmaven.repo.local=/ws/.m2 -DskipTests package'
-        '''
       }
     }
 
     stage('Docker Build') {
       steps {
-        sh '''
-          set -eux
-          docker build \
-            -t ${IMAGE}:latest \
-            -t ${IMAGE}:${GIT_SHORT} \
-            .
-        '''
+        script {
+          // μικρό git short για tag
+          def GIT_SHORT = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+          sh """
+            set -eux
+            docker build -t ${IMAGE}:latest -t ${IMAGE}:${GIT_SHORT} .
+          """
+          env.GIT_SHORT = GIT_SHORT
+        }
       }
     }
 
@@ -52,12 +43,10 @@ pipeline {
           passwordVariable: 'DOCKER_PASS'
         )]) {
           sh '''
-            set -eu
-            echo "Login to Docker Hub as $DOCKER_USER"
-            test -n "$DOCKER_PASS"  # ensure not empty
+            set -eux
             echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-            docker push ${IMAGE}:latest
-            docker push ${IMAGE}:${GIT_SHORT}
+            docker push '"${IMAGE}:latest"'
+            docker push '"${IMAGE}:${GIT_SHORT}"'
             docker logout || true
           '''
         }
@@ -66,7 +55,6 @@ pipeline {
   }
 
   post {
-    success { echo "✅ Pushed ${IMAGE}:latest and :${GIT_SHORT}" }
-    always  { sh 'docker logout || true' }
+    success { echo "✅ Pushed ${IMAGE}:latest and :${env.GIT_SHORT}" }
   }
 }
