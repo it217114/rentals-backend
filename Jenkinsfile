@@ -10,31 +10,26 @@ pipeline {
       steps {
         checkout scm
         script {
-          // short SHA από το τρέχον commit για tagging
           GIT_SHORT = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
           echo "GIT_SHORT = ${GIT_SHORT}"
         }
       }
     }
 
-    stage('Build JAR via docker run (Maven)') {
+    stage('Build JAR (Maven inside Docker)') {
       steps {
-        sh '''
-          set -eux
-          echo "== Jenkins WORKSPACE =="
-          pwd
-          ls -la
-
-          # Τρέχω Maven ΜΕΣΑ σε container και κάνω mount το workspace
-          docker run --rm \
-            -v "${WORKSPACE}:/ws" \
-            -w /ws \
-            maven:3.9.6-eclipse-temurin-21-alpine \
-            sh -lc "set -eux; ls -la; mvn -B -Dmaven.repo.local=/ws/.m2 -DskipTests package"
-
-          echo "== Artifacts =="
-          ls -la target || true
-        '''
+        script {
+          // Αυτό ΧΡΗΣΙΜΟΠΟΙΕΙ το Docker Pipeline plugin.
+          // Το plugin μοιράζεται αυτόματα το workspace με το κοντέινερ.
+          docker.image('maven:3.9.6-eclipse-temurin-21-alpine').inside {
+            sh '''
+              set -eux
+              ls -la
+              mvn -B -DskipTests package
+              ls -la target || true
+            '''
+          }
+        }
       }
     }
 
@@ -69,11 +64,7 @@ pipeline {
   }
 
   post {
-    always {
-      sh 'docker logout || true'
-    }
-    success {
-      echo "✅ Pushed ${IMAGE}:latest and :${GIT_SHORT}"
-    }
+    always { sh 'docker logout || true' }
+    success { echo "✅ Pushed ${IMAGE}:latest and :${GIT_SHORT}" }
   }
 }
